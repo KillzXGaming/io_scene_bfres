@@ -58,8 +58,8 @@ class BfresAddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     tex_conv_path = bpy.props.StringProperty(
-        name='TexConv Path',
-        description='Path of the proprietary TexConv utility to convert textures with.',
+        name='TexConv Executable Path',
+        description='Path of the proprietary TexConv executable to convert textures with.',
         subtype='FILE_PATH'
     )
 
