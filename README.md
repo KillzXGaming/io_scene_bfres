@@ -20,7 +20,7 @@ Installation
 - Create a new folder called "io_scene_bfres".
 - Copy in all `*.py` files from the `src` folder of this repository.
 - In the Blender user preferences, enable the 'Import-Export: Nintendo BFRES format' add-on.
-- Configure the path to the TexConv.exe utility if you want to import textures.
+- If you want to import textures, you have to provide the path to the TexConv executable (the program, not the folder it resides in). You can set this path in the add-on preferences by expanding the add-on's section there.
 
 License
 =======
