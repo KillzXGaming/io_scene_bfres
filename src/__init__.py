@@ -45,8 +45,8 @@ if "bpy" in locals():
 
 import bpy
 from . import log
-from . import yaz0
 from . import binary_io
+from . import yaz0
 from . import bfres_common
 from . import bfres_fmdl
 from . import bfres_ftex

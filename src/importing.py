@@ -47,8 +47,7 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         layout.prop(self, "merge_seams")
 
     def execute(self, context):
-        from . import importing
-        importer = importing.Importer(self, context, self.properties.filepath)
+        importer = Importer(self, context, self.properties.filepath)
         return importer.run()
 
     @staticmethod
