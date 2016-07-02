@@ -13,6 +13,8 @@ The following features are not implemented yet:
 
 Other features missing from the lists above are not planned at this time.
 
+![alt tag](https://raw.githubusercontent.com/Syroot/io_scene_bfres/master/doc/readme/example.png)
+
 Installation
 =====
 
