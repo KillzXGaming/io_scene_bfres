@@ -30,6 +30,11 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         description="Loads the embedded textures, requires TexConv to be set up in the add-on preferences.",
         default=True
     )
+    force_reimport = bpy.props.BoolProperty(
+        name="Force Reimport",
+        description="Reimports textures even when they were already found in an existing work folder.",
+        default=False
+    )
     merge_seams = bpy.props.BoolProperty(
         name="Merge Seam Vertices",
         description="Remerge vertices which were split to create UV seams.",
@@ -39,10 +44,11 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     def draw(self, context):
         layout = self.layout
         addon_prefs = context.user_preferences.addons[__package__].preferences
-        # Import Textures
-        sub = layout.row()
-        sub.enabled = bool(addon_prefs.tex_conv_path)
-        sub.prop(self, "import_textures")
+        # Import Textures / Force Reimport
+        row = layout.row()
+        row.enabled = bool(addon_prefs.tex_conv_path)
+        row.prop(self, "import_textures")
+        row.prop(self, "force_reimport")
         # Merge Seams
         layout.prop(self, "merge_seams")
 
@@ -98,20 +104,22 @@ class Importer:
         # Export the FTEX section referenced by the texture selector as a GTX file.
         texture_name = ftex.header.file_name_offset.name
         gtx_filename = os.path.join(self.gtx_directory, texture_name + ".gtx")
-        Log.write(0, "Exporting     '" + texture_name + "'...")
-        ftex.export_gtx(open(gtx_filename, "wb"))
-        # Decompress the GTX texture file with.
-        Log.write(0, "Decompressing '" + texture_name + "'...")
-        subprocess.call([self.addon_prefs.tex_conv_path,
-            "-i", gtx_filename,
-            "-f", "GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB",
-            "-o", gtx_filename])
-        # Convert the decompressed GTX texture to DDS.
-        Log.write(0, "Converting    '" + texture_name + "'...")
         dds_filename = os.path.join(self.dds_directory, texture_name + ".dds")
-        subprocess.call([self.addon_prefs.tex_conv_path,
-            "-i", gtx_filename,
-            "-o", dds_filename])
+        # Only export when the file does not exist yet, or reimporting is forced.
+        if self.operator.force_reimport or not os.path.isfile(dds_filename):
+            Log.write(0, "Exporting     '" + texture_name + "'...")
+            ftex.export_gtx(open(gtx_filename, "wb"))
+            # Decompress the GTX texture file with.
+            Log.write(0, "Decompressing '" + texture_name + "'...")
+            subprocess.call([self.addon_prefs.tex_conv_path,
+                "-i", gtx_filename,
+                "-f", "GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB",
+                "-o", gtx_filename])
+            # Convert the decompressed GTX texture to DDS.
+            Log.write(0, "Converting    '" + texture_name + "'...")
+            subprocess.call([self.addon_prefs.tex_conv_path,
+                "-i", gtx_filename,
+                "-o", dds_filename])
 
     def _convert_fmdl(self, fmdl):
         # Create an object for this FMDL in the current scene.
@@ -159,9 +167,10 @@ class Importer:
         fshp_mesh = bpy.data.meshes.new(fshp.header.name_offset.name)
         bm.to_mesh(fshp_mesh)
         bm.free()
-        # Apply the referenced material to the mesh.
+        # Apply the referenced material to the mesh if TexConv is set up.
         fmat = fmdl.fmat_index_group[fshp.header.material_index + 1].data
-        fshp_mesh.materials.append(self._get_fmat_material(fmat))
+        if self.addon_prefs.tex_conv_path:
+            fshp_mesh.materials.append(self._get_fmat_material(fmat))
         # Create an object to represent the mesh with.
         fshp_obj = bpy.data.objects.new(fshp_mesh.name, fshp_mesh)
         fshp_obj.parent = fmdl_obj

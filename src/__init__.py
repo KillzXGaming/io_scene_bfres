@@ -15,33 +15,15 @@ bl_info = {
 # Reload the classes when reloading add-ons in Blender with F8.
 if "bpy" in locals():
     import importlib
-    if "log" in locals():
-        print("Reloading: " + str(log))
-        importlib.reload(log)
-    if "binary_io" in locals():
-        print("Reloading: " + str(binary_io))
-        importlib.reload(binary_io)
-    if "yaz0" in locals():
-        print("Reloading: " + str(yaz0))
-        importlib.reload(yaz0)
-    if "bfres_common" in locals():
-        print("Reloading: " + str(bfres_common))
-        importlib.reload(bfres_common)
-    if "bfres_fmdl" in locals():
-        print("Reloading: " + str(bfres_fmdl))
-        importlib.reload(bfres_fmdl)
-    if "bfres_ftex" in locals():
-        print("Reloading: " + str(bfres_ftex))
-        importlib.reload(bfres_ftex)
-    if "bfres_embedded" in locals():
-        print("Reloading: " + str(bfres_embedded))
-        importlib.reload(bfres_embedded)
-    if "bfres_file" in locals():
-        print("Reloading: " + str(bfres_file))
-        importlib.reload(bfres_file)
-    if "importing" in locals():
-        print("Reloading: " + str(importing))
-        importlib.reload(importing)
+    if "log"            in locals(): importlib.reload(log)
+    if "binary_io"      in locals(): importlib.reload(binary_io)
+    if "yaz0"           in locals(): importlib.reload(yaz0)
+    if "bfres_common"   in locals(): importlib.reload(bfres_common)
+    if "bfres_fmdl"     in locals(): importlib.reload(bfres_fmdl)
+    if "bfres_ftex"     in locals(): importlib.reload(bfres_ftex)
+    if "bfres_embedded" in locals(): importlib.reload(bfres_embedded)
+    if "bfres_file"     in locals(): importlib.reload(bfres_file)
+    if "importing"      in locals(): importlib.reload(importing)
 
 import bpy
 from . import log
@@ -58,9 +40,9 @@ class BfresAddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     tex_conv_path = bpy.props.StringProperty(
-        name='TexConv Executable Path',
-        description='Path of the proprietary TexConv executable to convert textures with.',
-        subtype='FILE_PATH'
+        name="TexConv Executable Path",
+        description="Path of the proprietary TexConv executable to convert textures with.",
+        subtype="FILE_PATH"
     )
 
     def draw(self, context):

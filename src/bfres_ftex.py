@@ -1,6 +1,6 @@
 import enum
 from .binary_io import BinaryWriter
-from .bfres_common import BfresOffset, BfresNameOffset, IndexGroup
+from .bfres_common import BfresOffset, BfresNameOffset
 
 class FtexSection:
     class Header:
