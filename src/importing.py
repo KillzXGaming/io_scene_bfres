@@ -10,6 +10,7 @@ from .yaz0 import Yaz0Compression
 from .bfres_file import BfresFile
 
 class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
+    """Load a BFRES model file"""
     bl_idname = "import_scene.bfres"
     bl_label = "Import BFRES"
     bl_options = {"UNDO"}
@@ -40,6 +41,9 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         description="Remerge vertices which were split to create UV seams.",
         default=True
     )
+
+    # These properties are used by io_scene_mk8muunt to load Obj models.
+    ob_name = bpy.props.StringProperty() # If set, object won't be linked to scene, but stored as data with this name.
 
     def draw(self, context):
         layout = self.layout
@@ -88,10 +92,10 @@ class Importer:
         bfres_file = BfresFile(raw)
         raw.close()
         # Import the data into Blender objects.
-        self._convert_bfres(bfres_file)
+        self._convert(bfres_file)
         return {"FINISHED"}
 
-    def _convert_bfres(self, bfres):
+    def _convert(self, bfres):
         # Go through the FTEX sections and export them to GTX, then to DDS.
         if self.operator.import_textures and self.addon_prefs.tex_conv_path:
             for ftex_node in bfres.ftex_index_group[1:]:
@@ -107,27 +111,32 @@ class Importer:
         dds_filename = os.path.join(self.dds_directory, texture_name + ".dds")
         # Only export when the file does not exist yet, or reimporting is forced.
         if self.operator.force_reimport or not os.path.isfile(dds_filename):
-            Log.write(0, "Exporting     '" + texture_name + "'...")
+            Log.write(4, "Exporting     '" + texture_name + "'...")
             ftex.export_gtx(open(gtx_filename, "wb"))
             # Decompress the GTX texture file with.
-            Log.write(0, "Decompressing '" + texture_name + "'...")
+            Log.write(4, "Decompressing '" + texture_name + "'...")
             subprocess.call([self.addon_prefs.tex_conv_path,
                 "-i", gtx_filename,
                 "-f", "GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB",
                 "-o", gtx_filename])
             # Convert the decompressed GTX texture to DDS.
-            Log.write(0, "Converting    '" + texture_name + "'...")
+            Log.write(4, "Converting    '" + texture_name + "'...")
             subprocess.call([self.addon_prefs.tex_conv_path,
                 "-i", gtx_filename,
                 "-o", dds_filename])
 
     def _convert_fmdl(self, fmdl):
-        # Create an object for this FMDL in the current scene.
-        fmdl_obj = bpy.data.objects.new(fmdl.header.file_name_offset.name, None)
-        bpy.context.scene.objects.link(fmdl_obj)
+        if self.operator.ob_name:
+            # Do not link when imported thhough io_scene_mk8muunt and use the name provided.
+            fmdl_ob = bpy.data.objects.new(self.operator.ob_name, None)
+        else:
+            # Create the FMDL object in this scene.
+            fmdl_ob = bpy.data.objects.new(fmdl.header.file_name_offset.name, None)
+            bpy.context.scene.objects.link(fmdl_ob)
+        Importer._add_object_to_group(fmdl_ob, "BFRES")
         # Go through the polygons in this model.
         for fshp_node in fmdl.fshp_index_group[1:]:
-            self._convert_fshp(fmdl, fmdl_obj, fshp_node.data)
+            self._convert_fshp(fmdl, fmdl_ob, fshp_node.data)
 
     def _convert_fshp(self, fmdl, fmdl_obj, fshp):
         # Get the vertices and indices of the most detailled LoD model.
@@ -173,8 +182,11 @@ class Importer:
             fshp_mesh.materials.append(self._get_fmat_material(fmat))
         # Create an object to represent the mesh with.
         fshp_obj = bpy.data.objects.new(fshp_mesh.name, fshp_mesh)
+        Importer._add_object_to_group(fshp_obj, "BFRES")
         fshp_obj.parent = fmdl_obj
-        bpy.context.scene.objects.link(fshp_obj)
+        # Link to scene only if this is not imported through io_scene_mk8muunt.
+        if not self.operator.ob_name:
+            bpy.context.scene.objects.link(fshp_obj)
 
     def _get_fmat_material(self, fmat):
         # Return a previously created material or make a new one.
@@ -245,9 +257,17 @@ class Importer:
             fixed_attribute_type = "s"
         else:
             fixed_attribute_type = attribute_type
-            Log.write(0, "Warning: Texture '" + texture_name + "': Unknown attribute '" + attribute_name + "'")
+            Log.write(4, "Warning: Texture '" + texture_name + "': Unknown attribute '" + attribute_name + "'")
         # Log a correction.
         if attribute_type != fixed_attribute_type:
-            Log.write(0, "Warning: Texture '" + texture_name + "': fixing type of attribute '" + attribute_name
+            Log.write(4, "Warning: Texture '" + texture_name + "': fixing type of attribute '" + attribute_name
                 + "' to '" + fixed_attribute_type + "'")
         return attribute_type
+
+    @staticmethod
+    def _add_object_to_group(ob, group_name):
+        # Get or create the required group.
+        group = bpy.data.groups.get(group_name, bpy.data.groups.new(group_name))
+        # Link the provided object to it.
+        if ob.name not in group.objects:
+            group.objects.link(ob)

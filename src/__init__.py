@@ -2,7 +2,7 @@ bl_info = {
     "name": "Nintendo BFRES format",
     "description": "Import-Export BFRES mesh, UV's, materials and textures",
     "author": "Syroot",
-    "version": (0, 4, 1),
+    "version": (0, 5, 0),
     "blender": (2, 77, 0),
     "location": "File > Import-Export",
     "warning": "This add-on is under development.",
