@@ -1,6 +1,6 @@
 import enum
-from .log import Log
-from .binary_io import BinaryReader
+from . import addon
+from . import binary_io
 from .bfres_common import BfresOffset, BfresNameOffset, IndexGroup
 from .bfres_fmdl import FmdlSection
 from .bfres_ftex import FtexSection
@@ -77,6 +77,7 @@ All this makes it quite non-trivial to create an exporter later on, as offsets h
 completely written. This needs some brain-storming as it was probably solved with C pointer maths originally.
 '''
 
+
 class BfresFile:
     class Header:
         INDEX_GROUP_COUNT = 12
@@ -84,12 +85,12 @@ class BfresFile:
         def __init__(self, reader):
             if reader.read_raw_string(4) != "FRES":
                 raise AssertionError("Invalid FRES file header.")
-            self.unknown0x04 = reader.read_byte() # 0x03 in MK8
-            self.unknown0x05 = reader.read_byte() # 0x00, 0x03 or 0x04 in MK8
-            self.unknown0x06 = reader.read_byte() # 0x00 in MK8
-            self.unknown0x07 = reader.read_byte() # 0x01, 0x02 or 0x04 in MK8
+            self.unknown0x04 = reader.read_byte()  # 0x03 in MK8
+            self.unknown0x05 = reader.read_byte()  # 0x00, 0x03 or 0x04 in MK8
+            self.unknown0x06 = reader.read_byte()  # 0x00 in MK8
+            self.unknown0x07 = reader.read_byte()  # 0x01, 0x02 or 0x04 in MK8
             self.embedded_byte_order = reader.read_uint16()
-            self.version = reader.read_uint16() # 0x0010 in MK8
+            self.version = reader.read_uint16()  # 0x0010 in MK8
             self.file_length = reader.read_uint32()
             self.file_alignment = reader.read_uint32()
             self.file_name_offset = BfresNameOffset(reader)
@@ -119,11 +120,11 @@ class BfresFile:
 
     def __init__(self, raw):
         # Open a big-endian binary reader on the stream.
-        with BinaryReader(raw) as reader:
+        with binary_io.BinaryReader(raw) as reader:
             reader.endianness = ">"
             # Read the header.
             self.header = self.Header(reader)
-            Log.write(0, "FRES " + self.header.file_name_offset.name)
+            addon.log(0, "FRES " + self.header.file_name_offset.name)
             # Load the typed data referenced by the specific index groups, if present.
             for i in range(0, self.Header.INDEX_GROUP_COUNT):
                 offset = self.header.index_group_offsets[i]
@@ -135,4 +136,4 @@ class BfresFile:
                         self.ftex_index_group = IndexGroup(reader, lambda r: FtexSection(r))
                     elif i == self.IndexGroupType.EmbeddedFile11:
                         self.embedded_file_index_group = IndexGroup(reader, lambda r: EmbeddedFile(r))
-                    # TODO: Read other index group types.
+                        # TODO: Read other index group types.

@@ -10,6 +10,7 @@ class BfresOffset:
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.to_file == other.to_file
 
+
 class BfresNameOffset(BfresOffset):
     def __init__(self, reader):
         super().__init__(reader)
@@ -19,6 +20,7 @@ class BfresNameOffset(BfresOffset):
         self.name = reader.read_0_string()
         reader.seek(current_pos)
 
+
 class IndexGroup:
     class Node:
         def __init__(self, reader):
@@ -27,12 +29,12 @@ class IndexGroup:
             self.right_index = reader.read_uint16()
             self.name_offset = BfresNameOffset(reader)
             self.data_offset = BfresOffset(reader)
-            self.data = None # Will be loaded via callback when creating the IndexGroup.
+            self.data = None  # Will be loaded via callback when creating the IndexGroup.
 
     def __init__(self, reader, data_cb):
         # Read the properties of the index group.
         self.length_in_bytes = reader.read_uint32()
-        self.node_count = reader.read_uint32() # Excluding the first (root) node.
+        self.node_count = reader.read_uint32()  # Excluding the first (root) node.
         # Read the nodes.
         self.nodes = []
         for i in range(0, self.node_count + 1):

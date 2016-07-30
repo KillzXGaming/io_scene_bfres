@@ -1,8 +1,7 @@
 import enum
-import mathutils
 import numpy
 import struct
-from .log import Log
+from . import addon
 from .bfres_common import BfresOffset, BfresNameOffset, IndexGroup
 
 '''
@@ -18,13 +17,14 @@ To build the vertices of an FMDL model, the following steps have to be done:
 - Iterate through the vertices, connect faces referenced by the indices, and set up additional vertex data.
 '''
 
+
 class FmdlSection:
     class Header:
         def __init__(self, reader):
             if reader.read_raw_string(4) != "FMDL":
                 raise AssertionError("Invalid FMDL section header.")
             self.file_name_offset = BfresNameOffset(reader)
-            self.data_offset = BfresOffset(reader) # Wiki says end of string table, but that's where FMDL data begins.
+            self.data_offset = BfresOffset(reader)  # Wiki says end of string table, but that's where FMDL data begins.
             self.fskl_offset = BfresOffset(reader)
             self.fvtx_array_offset = BfresOffset(reader)
             self.fshp_index_group_offset = BfresOffset(reader)
@@ -34,18 +34,18 @@ class FmdlSection:
             self.fshp_count = reader.read_uint16()
             self.fmat_count = reader.read_uint16()
             self.param_count = reader.read_uint16()
-            self.unknown0x28 = reader.read_uint32() # Maybe an unused face count.
+            self.unknown0x28 = reader.read_uint32()  # Maybe an unused face count.
 
     class Parameter:
         def __init__(self, reader):
             self.variable_name_offset = BfresNameOffset(reader)
-            self.unknown0x04 = reader.read_uint16() # 0x0001
-            self.unknown0x06 = reader.read_uint16() # 0x0000
+            self.unknown0x04 = reader.read_uint16()  # 0x0001
+            self.unknown0x06 = reader.read_uint16()  # 0x0000
             self.unknown0x08 = reader.read_single()
 
     def __init__(self, reader):
         self.header = self.Header(reader)
-        Log.write(1, "FMDL " + self.header.file_name_offset.name)
+        addon.log(1, "FMDL " + self.header.file_name_offset.name)
         # Load the FSKL subsection.
         reader.seek(self.header.fskl_offset.to_file)
         self.fskl = FsklSubsection(reader)
@@ -65,16 +65,17 @@ class FmdlSection:
             reader.seek(self.header.param_index_group_offset.to_file)
             self.param_index_group = IndexGroup(reader, lambda r: self.Parameter(r))
 
+
 class FsklSubsection:
     class Header:
         def __init__(self, reader):
             if reader.read_raw_string(4) != "FSKL":
                 raise AssertionError("Invalid FSKL subsection header.")
             self.unknown0x04 = reader.read_uint16()
-            self.unknown0x06 = reader.read_uint16() # 0x1100, 0x1200
+            self.unknown0x06 = reader.read_uint16()  # 0x1100, 0x1200
             self.bone_count = reader.read_uint16()
-            self.inv_count = reader.read_uint16() # Count of elements in inverse index and matrix arrays.
-            self.extra_index_count = reader.read_uint16() # Additional elements in inverse index array.
+            self.inv_count = reader.read_uint16()  # Count of elements in inverse index and matrix arrays.
+            self.extra_index_count = reader.read_uint16()  # Additional elements in inverse index array.
             self.unknown0x0e = reader.read_uint16()
             self.bone_index_group_array_offset = BfresOffset(reader)
             self.bone_array_offset = BfresOffset(reader)
@@ -82,26 +83,26 @@ class FsklSubsection:
             self.inv_matrix_array_offset = BfresOffset(reader)
 
     class Bone:
-        CHILD_BONE_COUNT = 4 # Wiki says parent bones, but where does that make sense to have multiple parents?
+        CHILD_BONE_COUNT = 4  # Wiki says parent bones, but where does that make sense to have multiple parents?
 
         def __init__(self, reader):
             self.name_offset = BfresNameOffset(reader)
-            Log.write(3, "Bone " + self.name_offset.name)
+            addon.log(3, "Bone " + self.name_offset.name)
             self.index = reader.read_uint16()
             self.child_indices = []
             for i in range(0, self.CHILD_BONE_COUNT):
-                self.child_indices.append(reader.read_uint16()) # 0xFFFF for no child.
+                self.child_indices.append(reader.read_uint16())  # 0xFFFF for no child.
             self.unknown0x0e = reader.read_uint16()
-            self.flags = reader.read_uint16() # Unknown purpose.
-            self.unknown0x12 = reader.read_uint16() # 0x1001
-            self.scale = reader.read_vector3f()
-            self.rotation = reader.read_quaternion()
-            self.translation = reader.read_vector3f()
-            self.padding = reader.read_uint32() # 0x00000000.
+            self.flags = reader.read_uint16()  # Unknown purpose.
+            self.unknown0x12 = reader.read_uint16()  # 0x1001
+            self.scale = reader.read_singles(3)
+            self.rotation = reader.read_singles(4)
+            self.translation = reader.read_singles(3)
+            self.padding = reader.read_uint32()  # 0x00000000.
 
     def __init__(self, reader):
         self.header = self.Header(reader)
-        Log.write(2, "FSKL")
+        addon.log(2, "FSKL")
         # Load the bone index group.
         reader.seek(self.header.bone_index_group_array_offset.to_file)
         self.bone_index_group = IndexGroup(reader, lambda r: self.Bone(r))
@@ -114,7 +115,8 @@ class FsklSubsection:
         reader.seek(self.header.inv_matrix_array_offset.to_file)
         self.inv_matrices = []
         for i in range(0, self.header.inv_count):
-            self.inv_matrices.append(reader.read_matrix4x3())
+            self.inv_matrices.append((reader.read_singles(3), reader.read_singles(3), reader.read_singles(3), reader.read_singles(3)))
+
 
 class FvtxSubsection:
     class Header:
@@ -123,26 +125,26 @@ class FvtxSubsection:
                 raise AssertionError("Invalid FVTX subsection header.")
             self.attribute_count = reader.read_byte()
             self.buffer_count = reader.read_byte()
-            self.index = reader.read_uint16() # The index in the FMDL FVTX array.
+            self.index = reader.read_uint16()  # The index in the FMDL FVTX array.
             self.vertex_count = reader.read_uint32()
-            self.unknown0x0c = reader.read_uint32() # 0x00000000 (normally), 0x04000000
+            self.unknown0x0c = reader.read_uint32()  # 0x00000000 (normally), 0x04000000
             self.attribute_array_offset = BfresOffset(reader)
             self.attribute_index_group_offset = BfresOffset(reader)
             self.buffer_array_offset = BfresOffset(reader)
-            self.padding = reader.read_uint32() # 0x00000000
+            self.padding = reader.read_uint32()  # 0x00000000
 
     class Attribute:
         def __init__(self, reader):
             self.name_offset = BfresNameOffset(reader)
-            index_and_offset = reader.read_uint32() # XXYYYYYY, where X is the buffer index and Y the offset.
-            self.buffer_index = index_and_offset >> 24 # The index of the buffer containing this attrib.
-            self.element_offset = index_and_offset & 0x00FFFFFF # Offset in each element.
+            index_and_offset = reader.read_uint32()  # XXYYYYYY, where X is the buffer index and Y the offset.
+            self.buffer_index = index_and_offset >> 24  # The index of the buffer containing this attrib.
+            self.element_offset = index_and_offset & 0x00FFFFFF  # Offset in each element.
             self.format = reader.read_uint32()
             # Get a method parsing this attribute format.
             self.parser = self._parsers.get(self.format, None)
             if not self.parser:
-                Log.write(0, "Warning: Attribute " + self.name_offset.name + ": unknown format " + str(self.format))
-                #raise NotImplementedError("Attribute " + self.name_offset.name + ": unknown format " + str(self.format))
+                addon.log(0, "Warning: Attribute " + self.name_offset.name + ": unknown format " + str(self.format))
+                # raise NotImplementedError("Attribute " + self.name_offset.name + ": unknown format " + str(self.format))
 
         def _parse_2x_8bit_normalized(self, buffer, offset):
             offset += self.element_offset
@@ -182,7 +184,7 @@ class FvtxSubsection:
             # Those are then divided by 511 to retrieve the decimal value.
             x = ((integer & 0x3FC00000) >> 22) / 511
             y = ((integer & 0x000FF000) >> 12) / 511
-            z = ((integer & 0x000003FC) >>  2) / 511
+            z = ((integer & 0x000003FC) >> 2) / 511
             return x, y, z
 
         def _parse_2x_16bit_float(self, buffer, offset):
@@ -219,12 +221,12 @@ class FvtxSubsection:
 
     class Buffer:
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_uint32() # 0x00000000
+            self.unknown0x00 = reader.read_uint32()  # 0x00000000
             self.size_in_bytes = reader.read_uint32()
-            self.unknown0x08 = reader.read_uint32() # 0x00000000
-            self.stride = reader.read_uint16() # Size of each element in the buffer.
-            self.unknown0x0e = reader.read_uint16() # 0x0001
-            self.unknown0x10 = reader.read_uint32() # 0x00000000
+            self.unknown0x08 = reader.read_uint32()  # 0x00000000
+            self.stride = reader.read_uint16()  # Size of each element in the buffer.
+            self.unknown0x0e = reader.read_uint16()  # 0x0001
+            self.unknown0x10 = reader.read_uint32()  # 0x00000000
             self.data_offset = BfresOffset(reader)
             # Read in the raw data.
             current_pos = reader.tell()
@@ -235,22 +237,22 @@ class FvtxSubsection:
     class Vertex:
         def __init__(self):
             # Member names must be kept as they allow a simple mapping in self.get_vertices().
-            self.p0 = None # Position
-            self.n0 = None # Normal
-            self.t0 = None # Tangent, lighting calculation
-            self.b0 = None # Binormal, lighting calculation
-            self.w0 = None # Blend weight, unknown purpose
-            self.i0 = None # Blend index, unknown purpose
-            self.u0 = None # UV texture coordinate layer 1
-            self.u1 = None # UV texture coordinate layer 2
-            self.u2 = None # UV texture coordinate layer 3
-            self.u3 = None # UV texture coordinate layer 4
-            self.c0 = None # Color for shadow mapping
-            self.c1 = None # Color for shadow mapping
+            self.p0 = None  # Position
+            self.n0 = None  # Normal
+            self.t0 = None  # Tangent, lighting calculation
+            self.b0 = None  # Binormal, lighting calculation
+            self.w0 = None  # Blend weight, unknown purpose
+            self.i0 = None  # Blend index, unknown purpose
+            self.u0 = None  # UV texture coordinate layer 1
+            self.u1 = None  # UV texture coordinate layer 2
+            self.u2 = None  # UV texture coordinate layer 3
+            self.u3 = None  # UV texture coordinate layer 4
+            self.c0 = None  # Color for shadow mapping
+            self.c1 = None  # Color for shadow mapping
 
     def __init__(self, reader):
         self.header = self.Header(reader)
-        Log.write(2, "FVTX")
+        addon.log(2, "FVTX")
         # Load the attribute index group.
         current_pos = reader.tell()
         reader.seek(self.header.attribute_index_group_offset.to_file)
@@ -269,7 +271,7 @@ class FvtxSubsection:
         # Get the data by attributes, as the data can be separated into different data arrays.
         for attribute_node in self.attribute_index_group[1:]:
             attribute = attribute_node.data
-            vertex_member = attribute.name_offset.name[1:] # Remove the underscore of the attribute name.
+            vertex_member = attribute.name_offset.name[1:]  # Remove the underscore of the attribute name.
             buffer = self.buffers[attribute.buffer_index]
             if attribute.parser is None:
                 # Dump the attribute data into a file for further investigation.
@@ -280,59 +282,60 @@ class FvtxSubsection:
                     setattr(vertices[i], vertex_member, attribute.parser(attribute, buffer, offset))
         return vertices
 
+
 class FshpSubsection:
     class Header:
         def __init__(self, reader):
             if reader.read_raw_string(4) != "FSHP":
                 raise AssertionError("Invalid FSHP subsection header.")
             self.name_offset = BfresNameOffset(reader)
-            self.unknown0x08 = reader.read_uint32() # 0x00000002
-            self.index = reader.read_uint16() # The index in the FMDL FSHP index group.
-            self.material_index = reader.read_uint16() # The index of the FMAT material for this polygon.
-            self.bone_index = reader.read_uint16() # The index of the bone this polygon is transformed with.
-            self.buffer_index = reader.read_uint16() # Same as self.index in MK8.
-            self.fskl_index_array_count = reader.read_uint16() # Often 0x0000, unknown purpose, related to FSKL.
-            self.unknown0x16 = reader.read_byte() # Tends to be 0x00 if fskl_index_array_count is 0x0000.
+            self.unknown0x08 = reader.read_uint32()  # 0x00000002
+            self.index = reader.read_uint16()  # The index in the FMDL FSHP index group.
+            self.material_index = reader.read_uint16()  # The index of the FMAT material for this polygon.
+            self.bone_index = reader.read_uint16()  # The index of the bone this polygon is transformed with.
+            self.buffer_index = reader.read_uint16()  # Same as self.index in MK8.
+            self.fskl_index_array_count = reader.read_uint16()  # Often 0x0000, unknown purpose, related to FSKL.
+            self.unknown0x16 = reader.read_byte()  # Tends to be 0x00 if fskl_index_array_count is 0x0000.
             self.lod_count = reader.read_byte()
             self.visibility_group_tree_node_count = reader.read_uint32()
             self.unknown0x1c = reader.read_single()
             self.fvtx_offset = BfresOffset(reader)
             self.lod_array_offset = BfresOffset(reader)
             self.fskl_index_array_offset = BfresOffset(reader)
-            self.unknown0x2c = BfresOffset(reader) # 0x00000000
+            self.unknown0x2c = BfresOffset(reader)  # 0x00000000
             self.visibility_group_tree_nodes_offset = BfresOffset(reader)
             self.visibility_group_tree_ranges_offset = BfresOffset(reader)
             self.visibility_group_tree_indices_offset = BfresOffset(reader)
-            self.padding = reader.read_uint32() # 0x00000000
+            self.padding = reader.read_uint32()  # 0x00000000
 
     class LodModel:
         class VisibilityGroup:
             def __init__(self, reader):
-                self.index_byte_offset = reader.read_uint32() # Divide by 2 to get the array index; indices are 16-bit.
+                self.index_byte_offset = reader.read_uint32()  # Divide by 2 to get the array index; indices are 16-bit.
                 self.index_count = reader.read_uint32()
 
         class IndexBuffer:
             def __init__(self, reader):
-                self.unknown0x00 = reader.read_uint32() # 0x00000000
-                self.size_in_bytes = reader.read_uint32() # Divide by 2 to get the number of array elements.
-                self.unknown0x08 = reader.read_uint32() # 0x00000000
-                self.unknown0x0c = reader.read_uint16() # 0x0000
-                self.unknown0x0e = reader.read_uint16() # 0x0001
-                self.unknown0x10 = reader.read_uint32() # 0x00000000
+                self.unknown0x00 = reader.read_uint32()  # 0x00000000
+                self.size_in_bytes = reader.read_uint32()  # Divide by 2 to get the number of array elements.
+                self.unknown0x08 = reader.read_uint32()  # 0x00000000
+                self.unknown0x0c = reader.read_uint16()  # 0x0000
+                self.unknown0x0e = reader.read_uint16()  # 0x0001
+                self.unknown0x10 = reader.read_uint32()  # 0x00000000
                 self.data_offset = BfresOffset(reader)
                 # Read in the raw data.
                 reader.seek(self.data_offset.to_file)
-                self.indices = reader.read_uint16s(self.size_in_bytes / 2)
+                self.indices = reader.read_uint16s(self.size_in_bytes // 2)
 
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_uint32() # 0x00000004
-            self.unknown0x04 = reader.read_uint32() # 0x00000004
+            self.unknown0x00 = reader.read_uint32()  # 0x00000004
+            self.unknown0x04 = reader.read_uint32()  # 0x00000004
             self.total_index_count = reader.read_uint32()
             self.visibility_group_count = reader.read_uint16()
-            self.unknown0x0e = reader.read_uint16() # 0x0000
+            self.unknown0x0e = reader.read_uint16()  # 0x0000
             self.visibility_group_offset = BfresOffset(reader)
             self.index_buffer_offset = BfresOffset(reader)
-            self.skip_vertices = reader.read_uint32() # The number of elements to skip in the FVTX buffer.
+            self.skip_vertices = reader.read_uint32()  # The number of elements to skip in the FVTX buffer.
             # Load the visibility group array.
             current_pos = reader.tell()
             reader.seek(self.visibility_group_offset.to_file)
@@ -347,21 +350,21 @@ class FshpSubsection:
 
     class VisibilityGroupTreeNode:
         def __init__(self, reader):
-            self.left_child_index = reader.read_uint16() # The current node's index if no left child.
-            self.right_child_index = reader.read_uint16() # The current node's index if no right child.
-            self.unknown0x04 = reader.read_uint16() # Always the same as left_child_index.
-            self.next_sibling_index = reader.read_uint16() # For left children the same as the parent's right index.
+            self.left_child_index = reader.read_uint16()  # The current node's index if no left child.
+            self.right_child_index = reader.read_uint16()  # The current node's index if no right child.
+            self.unknown0x04 = reader.read_uint16()  # Always the same as left_child_index.
+            self.next_sibling_index = reader.read_uint16()  # For left children the same as the parent's right index.
             self.visibility_group_index = reader.read_uint16()
             self.visibility_group_count = reader.read_uint16()
 
     class VisibilityGroupTreeRange:
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_vector3f()
-            self.unknown0x0c = reader.read_vector3f()
+            self.unknown0x00 = reader.read_singles(3)
+            self.unknown0x0c = reader.read_singles(3)
 
     def __init__(self, reader):
         self.header = self.Header(reader)
-        Log.write(2, "FSHP " + self.header.name_offset.name)
+        addon.log(2, "FSHP " + self.header.name_offset.name)
         # Load the LoD model array.
         reader.seek(self.header.lod_array_offset.to_file)
         self.lod_models = []
@@ -382,20 +385,21 @@ class FshpSubsection:
         # Count might be incorrect, wiki says it is number of visibility groups of FSHP, but which LoD model?
         self.visibility_group_tree_indices = reader.read_uint16s(self.header.visibility_group_tree_node_count)
 
+
 class FmatSubsection:
     class Header:
         def __init__(self, reader):
             if reader.read_raw_string(4) != "FMAT":
                 raise AssertionError("Invalid FMAT subsection header.")
             self.name_offset = BfresNameOffset(reader)
-            self.unknown0x08 = reader.read_uint32() # 0x00000001
-            self.index = reader.read_uint16() # The index in the FMDL FMAT index group.
+            self.unknown0x08 = reader.read_uint32()  # 0x00000001
+            self.index = reader.read_uint16()  # The index in the FMDL FMAT index group.
             self.render_param_count = reader.read_uint16()
             self.texture_selector_count = reader.read_byte()
-            self.texture_attribute_selector_count = reader.read_byte() # Equal to texture_selector_count
+            self.texture_attribute_selector_count = reader.read_byte()  # Equal to texture_selector_count
             self.material_param_count = reader.read_uint16()
             self.material_param_data_size = reader.read_uint32()
-            self.unknown0x18 = reader.read_uint32() # 0x00000001, 0x00000001, 0x00000002
+            self.unknown0x18 = reader.read_uint32()  # 0x00000001, 0x00000001, 0x00000002
             self.render_param_index_group_offset = BfresOffset(reader)
             self.material_structure_offset = BfresOffset(reader)
             self.shader_control_structure_offset = BfresOffset(reader)
@@ -405,49 +409,49 @@ class FmatSubsection:
             self.material_param_array_offset = BfresOffset(reader)
             self.material_param_index_group_offset = BfresOffset(reader)
             self.material_param_data_offset = BfresOffset(reader)
-            self.shadow_param_index_group_offset = BfresOffset(reader) # 0 if it does not exist.
-            self.unknown0x44 = BfresOffset(reader) # Points to 12 0 bytes; 0 if it does not exist.
+            self.shadow_param_index_group_offset = BfresOffset(reader)  # 0 if it does not exist.
+            self.unknown0x44 = BfresOffset(reader)  # Points to 12 0 bytes; 0 if it does not exist.
 
     class RenderParameter:
         class Type(enum.IntEnum):
             Unknown8BytesNull = 0x00
-            Unknown2Floats    = 0x01
-            StringOffset      = 0x02
+            Unknown2Floats = 0x01
+            StringOffset = 0x02
 
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_uint16() # 0x0000, 0x0001
-            self.type = reader.read_byte() # self.Type
-            self.unknown0x03 = reader.read_byte() # 0x00
+            self.unknown0x00 = reader.read_uint16()  # 0x0000, 0x0001
+            self.type = reader.read_byte()  # self.Type
+            self.unknown0x03 = reader.read_byte()  # 0x00
             self.variable_name_offset = BfresNameOffset(reader)
             # Read the value, depending on self.type.
             if self.type == self.Type.Unknown8BytesNull:
                 self.value = reader.read_bytes(8)
             elif self.type == self.Type.Unknown2Floats:
-                self.value = reader.read_vector2f()
+                self.value = reader.read_singles(2)
             elif self.type == self.Type.StringOffset:
                 self.value = BfresNameOffset(reader)
 
     class MaterialStructure:
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_uint32() # < 0x00000014
-            self.unknown0x04 = reader.read_uint16() # 0x0028
-            self.unknown0x06 = reader.read_uint16() # 0x0240, 0x0242 or 0x0243
-            self.unknown0x08 = reader.read_uint32() # 0x49749732, 0x49749736
-            self.unknown0x0c = reader.read_uint32() # < 0x0000000e
-            self.unknown0x10 = reader.read_single() # < 1.0
-            self.unknown0x14 = reader.read_uint16() # 0x00cc
-            self.unknown0x16 = reader.read_uint16() # 0x0000, 0x0100
-            self.unknown0x18 = reader.read_uint32() # 0x00000000
-            self.unknown0x1c = reader.read_uint16() # 0x2001
-            self.unknown0x1e = reader.read_byte() # 0x01, 0x05
-            self.unknown0x1f = reader.read_byte() # 0x01, 0x04
-            self.unknown0x20 = reader.read_uint32s(4) # all 0x00000000
+            self.unknown0x00 = reader.read_uint32()  # < 0x00000014
+            self.unknown0x04 = reader.read_uint16()  # 0x0028
+            self.unknown0x06 = reader.read_uint16()  # 0x0240, 0x0242 or 0x0243
+            self.unknown0x08 = reader.read_uint32()  # 0x49749732, 0x49749736
+            self.unknown0x0c = reader.read_uint32()  # < 0x0000000e
+            self.unknown0x10 = reader.read_single()  # < 1.0
+            self.unknown0x14 = reader.read_uint16()  # 0x00cc
+            self.unknown0x16 = reader.read_uint16()  # 0x0000, 0x0100
+            self.unknown0x18 = reader.read_uint32()  # 0x00000000
+            self.unknown0x1c = reader.read_uint16()  # 0x2001
+            self.unknown0x1e = reader.read_byte()  # 0x01, 0x05
+            self.unknown0x1f = reader.read_byte()  # 0x01, 0x04
+            self.unknown0x20 = reader.read_uint32s(4)  # all 0x00000000
 
     class ShaderControl:
         def __init__(self, reader):
-            self.shader_1_name_offset = BfresNameOffset(reader) # Probably
-            self.shader_2_name_offset = BfresNameOffset(reader) # Probably
-            self.unknown0x08 = reader.read_uint32() # 0x00000000, 0x00000001
+            self.shader_1_name_offset = BfresNameOffset(reader)  # Probably
+            self.shader_2_name_offset = BfresNameOffset(reader)  # Probably
+            self.unknown0x08 = reader.read_uint32()  # 0x00000000, 0x00000001
             self.vertex_shader_input_count = reader.read_byte()
             self.pixel_shader_input_count = reader.read_byte()
             self.param_count = reader.read_uint16()
@@ -466,21 +470,21 @@ class FmatSubsection:
 
     class TextureSelector:
         def __init__(self, reader):
-            self.name_offset = BfresNameOffset(reader) # Same as the FTEX name.
-            Log.write(3, "Texture " + self.name_offset.name)
+            self.name_offset = BfresNameOffset(reader)  # Same as the FTEX name.
+            addon.log(3, "Texture " + self.name_offset.name)
             self.ftex_offset = BfresOffset(reader)
 
     class TextureAttributeSelector:
         def __init__(self, reader):
-            self.unknown0x00 = reader.read_byte() # 0x02
-            self.unknown0x01 = reader.read_byte() # 0x00, 0x02, 0x04, 0x12
-            self.unknown0x02 = reader.read_byte() # 0x00, 0x10, 0x12, 0x5a
-            self.unknown0x03 = reader.read_byte() # near 0x00 or near 0x80 (flags?)
-            self.unknown0x04 = reader.read_sbyte() # close to 0x00
-            self.unknown0x05 = reader.read_byte() # small value
-            self.unknown0x06 = reader.read_uint16() # flags?
-            self.unknown0x08 = reader.read_uint32() # 0x80000000
-            self.unknown0x0c = reader.read_uint32() # 0x00000000
+            self.unknown0x00 = reader.read_byte()  # 0x02
+            self.unknown0x01 = reader.read_byte()  # 0x00, 0x02, 0x04, 0x12
+            self.unknown0x02 = reader.read_byte()  # 0x00, 0x10, 0x12, 0x5a
+            self.unknown0x03 = reader.read_byte()  # near 0x00 or near 0x80 (flags?)
+            self.unknown0x04 = reader.read_sbyte()  # close to 0x00
+            self.unknown0x05 = reader.read_byte()  # small value
+            self.unknown0x06 = reader.read_uint16()  # flags?
+            self.unknown0x08 = reader.read_uint32()  # 0x80000000
+            self.unknown0x0c = reader.read_uint32()  # 0x00000000
             self.name_offset = BfresNameOffset(reader)
             index_and_unknown = reader.read_uint32()
             self.index = index_and_unknown >> 24
@@ -488,34 +492,34 @@ class FmatSubsection:
 
     class MaterialParameter:
         class Type(enum.IntEnum):
-            Int32     = 0x04
-            Float     = 0x0c
-            Vector2f  = 0x0d
-            Vector3f  = 0x0e
-            Vector4f  = 0x0f
+            Int32 = 0x04
+            Float = 0x0c
+            Vector2f = 0x0d
+            Vector3f = 0x0e
+            Vector4f = 0x0f
             Matrix2x3 = 0x1e
 
         def __init__(self, reader):
-            self.type = reader.read_byte() # self.Type
+            self.type = reader.read_byte()  # self.Type
             self.size = reader.read_byte()
-            self.value_offset = reader.read_uint16() # Offset in the FMAT material parameter data array.
-            self.unknown0x04 = reader.read_uint32() # 0xffffffff
-            self.unknown0x08 = reader.read_uint32() # 0x00000000
+            self.value_offset = reader.read_uint16()  # Offset in the FMAT material parameter data array.
+            self.unknown0x04 = reader.read_uint32()  # 0xffffffff
+            self.unknown0x08 = reader.read_uint32()  # 0x00000000
             self.index = reader.read_uint16()
-            self.index_again = reader.read_uint16() # same as self.index
+            self.index_again = reader.read_uint16()  # same as self.index
             self.variable_name_offset = BfresNameOffset(reader)
 
     class ShadowParameter:
         def __init__(self, reader):
             self.variable_name_offset = BfresNameOffset(reader)
-            self.unknown0x04 = reader.read_uint16() # 0x0001
-            self.unknown0x06 = reader.read_byte() # type or offset?
-            self.unknown0x07 = reader.read_byte() # 0x00
+            self.unknown0x04 = reader.read_uint16()  # 0x0001
+            self.unknown0x06 = reader.read_byte()  # type or offset?
+            self.unknown0x07 = reader.read_byte()  # 0x00
             self.value = reader.read_uint32()
 
     def __init__(self, reader):
         self.header = self.Header(reader)
-        Log.write(2, "FMAT " + self.header.name_offset.name)
+        addon.log(2, "FMAT " + self.header.name_offset.name)
         # Load the render parameter index group.
         reader.seek(self.header.render_param_index_group_offset.to_file)
         self.render_param_index_group = IndexGroup(reader, lambda r: self.RenderParameter(reader))

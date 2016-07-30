@@ -1,5 +1,6 @@
 from .bfres_common import BfresOffset
 
+
 class EmbeddedFile:
     def __init__(self, reader):
         self.offset = BfresOffset(reader)
