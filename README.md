@@ -2,17 +2,6 @@
 
 This is a Blender add-on to import the BFRES model file format, which is typically used in several Nintendo Wii U games.
 
-It is currently in the alpha stage and supports the following features:
-- Completely load the BFRES file structure into memory.
-- Convert FMDL sections, creating FSHP polygons and FMAT materials.
-- Converting all FTEX textures on the fly by delegating the conversion task to TexConv.
-
-The following features are not implemented yet:
-- Multiple UV layers
-- Skeleton
-
-Other features missing from the lists above are not planned at this time.
-
 ![alt tag](https://raw.githubusercontent.com/Syroot/io_scene_bfres/master/doc/readme/example.png)
 
 S. the wiki for [help and more information](https://github.com/Syroot/io_scene_bfres/wiki).
