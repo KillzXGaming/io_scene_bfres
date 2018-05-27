@@ -1,10 +1,11 @@
 import enum
+import subprocess
 from . import addon
 from . import binary_io
 from .bfres_common import BfresOffset, BfresNameOffset, IndexGroup
 from .bfres_fmdl import FmdlSection
-from .bfres_ftex import FtexSection
 from .bfres_embedded import EmbeddedFile
+
 
 '''
 Hierarchically visualized, the layout of a BFRES file is as follows:
@@ -83,27 +84,65 @@ class BfresFile:
         INDEX_GROUP_COUNT = 12
 
         def __init__(self, reader):
-            if reader.read_raw_string(4) != "FRES":
+            if reader.read_raw_string(8) != "FRES    ":
                 raise AssertionError("Invalid FRES file header.")
-            self.unknown0x04 = reader.read_byte()  # 0x03 in MK8
-            self.unknown0x05 = reader.read_byte()  # 0x00, 0x03 or 0x04 in MK8
-            self.unknown0x06 = reader.read_byte()  # 0x00 in MK8
-            self.unknown0x07 = reader.read_byte()  # 0x01, 0x02 or 0x04 in MK8
-            self.embedded_byte_order = reader.read_uint16()
-            self.version = reader.read_uint16()  # 0x0010 in MK8
-            self.file_length = reader.read_uint32()
+            self.version = reader.read_uint32() 
+            self.bom = reader.read_uint16()  #Byte Order mark
+            self.header_size = reader.read_uint16() #size of header to allignment
+            self.file_name_offset_directly = reader.read_uint32() #Goes directly to the string but not the size
             self.file_alignment = reader.read_uint32()
-            self.file_name_offset = BfresNameOffset(reader)
-            self.string_table_length = reader.read_uint32()
+            self.relocation_table_offset = reader.read_uint32()
+            self.bfres_size = reader.read_uint32()
+            self.file_name_offet = BfresNameOffset(reader)
+            self.padding = reader.read_uint32()
+            self.model_offset = reader.read_uint64()
+            self.model_index_offset = reader.read_uint64()
+            self.skeletal_anim_offset = reader.read_uint64()
+            self.skeletal_anim_index_offset = reader.read_uint64()
+            self.material_anim_offset = reader.read_uint64()
+            self.material_anim_index_offset = reader.read_uint64()
+            self.bonevis_anim_offset = reader.read_uint64()
+            self.bonevis_anim_index_offset = reader.read_uint64()
+            self.shape_anim_offset = reader.read_uint64()
+            self.shape_anim_index_offset = reader.read_uint64()
+            self.scene_anim_offset = reader.read_uint64()
+            self.scene_anim_index_offset = reader.read_uint64()	
+            self.buffer_mempool_offset = reader.read_uint64()
+            self.buffer_mempool_info_offset = reader.read_uint64()
+            self.externalfile_offset = reader.read_uint64()
+            self.externalfile_index_offset = reader.read_uint64()
+            self.padding = reader.read_uint64()
             self.string_table_offset = BfresOffset(reader)
-            # Read the index group offsets and counts, then load the index groups.
-            self.index_group_offsets = []
-            for i in range(0, self.INDEX_GROUP_COUNT):
-                self.index_group_offsets.append(BfresOffset(reader))
-            self.index_group_nodes = []
-            for i in range(0, self.INDEX_GROUP_COUNT):
-                self.index_group_nodes.append(reader.read_uint16())
+            self.padding = reader.read_uint32()
+            self.unk = reader.read_uint32()
+            self.model_count = reader.read_uint16() 
+            self.skeletal_anim_count = reader.read_uint16() 
+            self.material_anim_count = reader.read_uint16() 
+            self.visual_anim_count = reader.read_uint16()
+            self.shape_anim_count = reader.read_uint16()
+            self.scene_anim_count = reader.read_uint16()
+            self.exteralfile_count = reader.read_uint16()
+            self.padding = reader.read_uint32()
+            self.padding = reader.read_uint32()
+            self.padding = reader.read_uint32()
 
+            # Read the fmdl offset and count
+            self.fmdl_array = []
+            self.ext_array = []
+				
+    class Rlt:
+        def __init__(self, reader):
+            reader.seek(0x18)
+            self.RTLOffset = reader.read_uint32()  
+            reader.seek(self.RTLOffset)
+            reader.seek(0x30,1)
+            self.DataStart = reader.read_uint32()  
+
+    class External:
+        def __init__(self, reader):
+            self.dataOffset = reader.read_uint64()
+            self.Size = reader.read_uint64()
+				
     class IndexGroupType(enum.IntEnum):
         Fmdl0 = 0
         Ftex1 = 1
@@ -119,21 +158,40 @@ class BfresFile:
         EmbeddedFile11 = 11
 
     def __init__(self, raw):
-        # Open a big-endian binary reader on the stream.
+        # Open a little-endian binary reader on the stream.
         with binary_io.BinaryReader(raw) as reader:
-            reader.endianness = ">"
+            reader.endianness = "<"
             # Read the header.
+			
             self.header = self.Header(reader)
-            addon.log(0, "FRES " + self.header.file_name_offset.name)
-            # Load the typed data referenced by the specific index groups, if present.
-            for i in range(0, self.Header.INDEX_GROUP_COUNT):
-                offset = self.header.index_group_offsets[i]
-                if offset:
-                    reader.seek(offset.to_file)
-                    if i == self.IndexGroupType.Fmdl0:
-                        self.fmdl_index_group = IndexGroup(reader, lambda r: FmdlSection(r))
-                    elif i == self.IndexGroupType.Ftex1:
-                        self.ftex_index_group = IndexGroup(reader, lambda r: FtexSection(r))
-                    elif i == self.IndexGroupType.EmbeddedFile11:
-                        self.embedded_file_index_group = IndexGroup(reader, lambda r: EmbeddedFile(r))
-                        # TODO: Read other index group types.
+            addon.log(0, "FRES " + self.header.file_name_offet.name)
+            print(str(self.header.externalfile_offset))
+			
+            reader.seek(self.header.model_offset)
+            for i in range(0, self.header.model_count):
+                self.header.fmdl_array.append(FmdlSection(reader))
+            reader.seek(self.header.externalfile_offset)
+            for i in range(0, self.header.exteralfile_count): #Read Textures
+                self.header.ext_array.append(self.External(reader))
+                current_pos = reader.tell()
+               
+                print(self.header.ext_array[i].dataOffset)
+                reader.seek(self.header.ext_array[i].dataOffset)
+                if reader.read_raw_string(4) == "BNTX":
+                    print("Found BNTX Texture container")
+                    reader.seek(-4, 1) #Seek back once bntx is found
+                    self.bntx_file = reader.read_bytes(self.header.ext_array[i].Size)  #Create a byte array for entire bntx      
+                reader.seek(current_pos)
+                 # TODO: Read other sub file formats
+				 
+				 
+				 
+				 
+				 
+				 
+				 
+				 
+				 
+				 
+				 
+				 

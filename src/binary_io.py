@@ -63,7 +63,13 @@ class BinaryReader:
 
     def read_uint32(self):
         return struct.unpack(self.endianness + "I", self.reader.read(4))[0]
-
+		
+    def read_uint16BE(self):
+        return struct.unpack(">H", self.reader.read(2))[0]
+		
+    def read_uint64(self):
+        return struct.unpack(self.endianness + "Q", self.reader.read(8))[0]
+		
     def read_uint32s(self, count):
         return struct.unpack(self.endianness + str(int(count)) + "I", self.reader.read(4 * count))
 

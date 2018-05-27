@@ -16,7 +16,7 @@ class BfresNameOffset(BfresOffset):
         super().__init__(reader)
         # Seek to the position (pointing at the start of the 0-terminated string, after the length) and get the string.
         current_pos = reader.tell()
-        reader.seek(self.to_file)
+        reader.seek(self.to_self + 2)
         self.name = reader.read_0_string()
         reader.seek(current_pos)
 

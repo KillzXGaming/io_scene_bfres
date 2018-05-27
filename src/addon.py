@@ -14,11 +14,11 @@ class BfresAddonPreferences(bpy.types.AddonPreferences):
         if os.path.isfile(value):
             self.tex_conv_path = value
         else:
-            raise AssertionError("The selected path is not the TexConv2 executable.")
+            raise AssertionError("The selected path is not the TexConv executable.")
 
     # General
     tex_conv_path = bpy.props.StringProperty()
-    tex_conv_path_ui = bpy.props.StringProperty(name="TexConv2.exe Path", description="Path of the proprietary TexConv2 executable to convert textures with.", subtype='FILE_PATH', get=_get_tex_conv_path, set=_set_tex_conv_path)
+    tex_conv_path_ui = bpy.props.StringProperty(name="Texconv.exe Path", description="Path of the proprietary Texconv executable by Microsoft to convert BC5, BC7, and many more to png.", subtype='FILE_PATH', get=_get_tex_conv_path, set=_set_tex_conv_path)
 
     def draw(self, context):
         layout = self.layout

@@ -1,8 +1,8 @@
 bl_info = {
-    "name": "Nintendo BFRES format",
+    "name": "Nintendo NX BFRES format",
     "description": "Import-Export BFRES mesh, UV's, materials and textures",
     "author": "Syroot",
-    "version": (0, 5, 1),
+    "version": (0, 0, 1),
     "blender": (2, 77, 0),
     "location": "File > Import-Export",
     "warning": "This add-on is under development.",
@@ -25,14 +25,19 @@ if "bpy" in locals():
         importlib.reload(bfres_common)
     if "bfres_fmdl" in locals():
         importlib.reload(bfres_fmdl)
-    if "bfres_ftex" in locals():
-        importlib.reload(bfres_ftex)
     if "bfres_embedded" in locals():
         importlib.reload(bfres_embedded)
     if "bfres_file" in locals():
         importlib.reload(bfres_file)
     if "importing" in locals():
         importlib.reload(importing)
+    if "swizzle" in locals():
+        importlib.reload(swizzle)
+    if "dds" in locals():
+        importlib.reload(dds)
+    if "bntx_extract" in locals():
+        importlib.reload(bntx_extract)
+		
 import bpy
 from . import importing
 

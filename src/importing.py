@@ -8,12 +8,14 @@ from . import addon
 from . import binary_io
 from . import yaz0
 from . import bfres_file
-
+from . import bntx_extract
+from . import dds
+from . import swizzle
 
 class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     """Load a BFRES model file"""
-    bl_idname = "import_scene.bfres"
-    bl_label = "Import BFRES"
+    bl_idname = "import_scene.nxbfres"
+    bl_label = "Import NX BFRES"
     bl_options = {'UNDO'}
 
     filename_ext = ".bfres"
@@ -45,19 +47,17 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         tex_conv_path = context.user_preferences.addons[__package__].preferences.tex_conv_path
         box = self.layout.box()
         box.label("Texture Options:", icon='TEXTURE_DATA')
-        if tex_conv_path:
-            split = box.split(0.65)
-            split.prop(self, "extract_textures")
-            if self.extract_textures:
-                split.prop(self, "force_extract")
-                box.prop(self, "tex_import_diffuse")
-                box.prop(self, "tex_import_normal")
-                box.prop(self, "tex_import_specular")
-                box.prop(self, "tex_import_emissive")
-                box.prop(self, "tex_import_bake")
-                box.prop(self, "tex_import_other")
-        else:
-            box.label("TexConv path not configured.", icon='ERROR')
+        split = box.split(0.65)
+        split.prop(self, "extract_textures")
+        if self.extract_textures:
+            split.prop(self, "force_extract")
+            box.prop(self, "tex_import_diffuse")
+            box.prop(self, "tex_import_normal")
+            box.prop(self, "tex_import_specular")
+            box.prop(self, "tex_import_emissive")
+            box.prop(self, "tex_import_bake")
+            box.prop(self, "tex_import_other")
+
 
     def execute(self, context):
         importer = Importer(self, context, self.properties.filepath)
@@ -65,7 +65,7 @@ class ImportOperator(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     @staticmethod
     def menu_func_import(self, context):
-        self.layout.operator(ImportOperator.bl_idname, text="Nintendo BFRES (.bfres/.szs)")
+        self.layout.operator(ImportOperator.bl_idname, text="Nintendo Switch BFRES (.bfres/.szs)")
 
 
 class Importer:
@@ -81,11 +81,9 @@ class Importer:
         self.fileext = os.path.splitext(self.filename)[1].upper()
         # Create work directories for temporary files.
         self.work_directory = os.path.join(self.directory, "{}.work".format(self.filename))
-        self.gtx_directory = os.path.join(self.work_directory, "gtx")
-        self.dds_directory = os.path.join(self.work_directory, "dds")
+        self.texture_directory = os.path.join(self.work_directory, "gtx")
         os.makedirs(self.work_directory, exist_ok=True)
-        os.makedirs(self.gtx_directory, exist_ok=True)
-        os.makedirs(self.dds_directory, exist_ok=True)
+ 
 
     def run(self):
         # Ensure to have a stream with decompressed data.
@@ -101,34 +99,22 @@ class Importer:
 
     def _convert(self, bfres):
         # Go through the FTEX sections and export them to GTX, then convert to DDS.
-        if self.operator.extract_textures and self.addon_prefs.tex_conv_path:
-            for ftex_node in bfres.ftex_index_group[1:]:
-                self._extract_ftex(ftex_node.data)
+        self._extract_ftex(bfres.bntx_file)
         # Go through the FMDL sections which map to a Blender object.
-        for fmdl_node in bfres.fmdl_index_group[1:]:
-            self._convert_fmdl(fmdl_node.data)
+        for fmdl_node in bfres.header.fmdl_array:
+            self._convert_fmdl(fmdl_node)
 
-    def _extract_ftex(self, ftex):
+    def _extract_ftex(self, bntx):
         # Export the FTEX section referenced by the texture selector as a GTX file.
-        texture_name = ftex.header.file_name_offset.name
-        gtx_filename = os.path.join(self.gtx_directory, "{}.gtx".format(texture_name))
-        dds_filename = os.path.join(self.dds_directory, "{}.dds".format(texture_name))
-        # Only export when the file does not exist yet, or extracting is forced.
-        if self.operator.force_extract or not os.path.isfile(dds_filename):
-            addon.log(4, "Exporting     '{}'...".format(texture_name))
-            ftex.export_gtx(open(gtx_filename, "wb"))
-            # Decompress the GTX texture file with.
-            addon.log(4, "Decompressing '{}'...".format(texture_name))
-            subprocess.call([self.addon_prefs.tex_conv_path,
-                             "-i", gtx_filename,
-                             "-f", "GX2_SURFACE_FORMAT_TCS_R8_G8_B8_A8_SRGB",
-                             "-o", gtx_filename])
-            # Convert the decompressed GTX texture to DDS.
-            addon.log(4, "Converting    '{}'...".format(texture_name))
-            subprocess.call([self.addon_prefs.tex_conv_path,
-                             "-i", gtx_filename,
-                             "-o", dds_filename])
-
+        t = bntx_extract
+        t.main()
+        textures = t.readBNTX(bntx)
+        t.saveTextures(textures, self.texture_directory)
+        for file in os.listdir(self.work_directory):
+            if file.endswith("dds"):
+                ddsfile = (os.path.join(self.work_directory, file))
+                subprocess.call([self.addon_prefs.tex_conv_path,ddsfile, '-ft', 'png', '-f', 'R10G10B10A2_UNORM', '-y'])
+		
     def _convert_fmdl(self, fmdl):
         # If no parent is given, create an empty object holding the FSHP child mesh objects of this FMDL.
         if self.operator.parent_ob_name:
@@ -138,8 +124,8 @@ class Importer:
             Importer._add_object_to_group(fmdl_ob, "BFRES")
             bpy.context.scene.objects.link(fmdl_ob)
         # Go through the polygons in this model and create mesh objects representing them.
-        for fshp_node in fmdl.fshp_index_group[1:]:
-            fshp_ob = self._convert_fshp(fmdl, fshp_node.data)
+        for fshp_node in fmdl.header.fshp_array:
+            fshp_ob = self._convert_fshp(fmdl, fshp_node)
             if self.operator.parent_ob_name:
                 # Just parent the mesh object to the given object.
                 fshp_ob.parent = bpy.data.objects[self.operator.parent_ob_name]
@@ -153,7 +139,7 @@ class Importer:
         # Get the vertices and indices of the closest LoD model.
         vertices = fmdl.fvtx_array[fshp.header.buffer_index].get_vertices()
         lod_model = fshp.lod_models[min(self.operator.lod_model_index, len(fshp.lod_models) - 1)]
-        indices = lod_model.index_buffer.indices
+        indices = lod_model.indices
         # Create a bmesh to represent the FSHP polygon.
         bm = bmesh.new()
         # Go through the vertices (starting at the given offset) and add them to the bmesh.
@@ -162,7 +148,6 @@ class Importer:
         last_vertex = max(indices) + 1
         for vertex in vertices[lod_model.skip_vertices:lod_model.skip_vertices + last_vertex]:
             bm.verts.new((vertex.p0[0], -vertex.p0[2], vertex.p0[1]))  # Exchange Y with Z, mirror new Y
-            # _.normal = vertex.n0 # Blender does not correctly support custom normals, and they look weird.
         bm.verts.ensure_lookup_table()
         bm.verts.index_update()
         # Connect the faces (they are organized as a triangle list) and smooth shade them.
@@ -180,6 +165,18 @@ class Importer:
                 for loop in face.loops:
                     uv = vertices[loop.vert.index + lod_model.skip_vertices].u0
                     loop[uv_layer].uv = (uv[0], 1 - uv[1])  # Flip Y
+        if vertices[0].u1 is not None:  # Check the first vertex if it contains the required data.
+            uv_layer = bm.loops.layers.uv.new()
+            for face in bm.faces:
+                for loop in face.loops:
+                    uv = vertices[loop.vert.index + lod_model.skip_vertices].u1
+                    loop[uv_layer].uv = (uv[0], 1 - uv[1])  # Flip Y
+        if vertices[0].u2 is not None:  # Check the first vertex if it contains the required data.
+            uv_layer = bm.loops.layers.uv.new()
+            for face in bm.faces:
+                for loop in face.loops:
+                    uv = vertices[loop.vert.index + lod_model.skip_vertices].u2
+                    loop[uv_layer].uv = (uv[0], 1 - uv[1])  # Flip Y
         # Optimize the mesh if requested.
         if self.operator.merge_seams:
             bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0)
@@ -188,9 +185,8 @@ class Importer:
         bm.to_mesh(fshp_mesh)
         bm.free()
         # Apply the referenced material to the mesh if TexConv is set up.
-        fmat = fmdl.fmat_index_group[fshp.header.material_index + 1].data
-        if self.addon_prefs.tex_conv_path:
-            fshp_mesh.materials.append(self._get_fmat_material(fmat))
+        fmat = fmdl.fmat_array[fshp.header.material_index ]
+        fshp_mesh.materials.append(self._get_fmat_material(fmat))
         # Return an object which represents the mesh.
         return bpy.data.objects.new(fshp_mesh.name, fshp_mesh)
 
@@ -209,7 +205,8 @@ class Importer:
         material.specular_alpha = 0
         # Convert and load the textures into the materials' texture slots.
         if fmat.texture_selector_array:
-            for texture, attrib in zip(fmat.texture_selector_array, fmat.texture_attribute_selector_index_group[1:]):
+            for texture, attrib in zip(fmat.texture_selector_array, fmat.sampler_names):
+                print("test" + texture.name_offset.name + attrib.name_offset.name)
                 texture_name = texture.name_offset.name
                 attribute_name = Importer._get_attribute_type(texture_name, attrib.name_offset.name)
                 # Check if the attribute should be imported, then create a correspondingly configured texture slot.
@@ -234,6 +231,9 @@ class Importer:
                         # TODO: Slot settings might be wrong (s. Wild Woods' glowing circles).
                         slot.use_map_color_diffuse = False
                         slot.use_map_emit = True
+                    else:
+                        slot.use_map_color_diffuse = False
+
         return material
 
     def _check_attribute_import(self, attribute):
@@ -250,7 +250,7 @@ class Importer:
         if texture:
             return texture
         # Otherwise, load a new texture from the DDS file.
-        image_file_name = "{}.dds".format(os.path.join(self.dds_directory, texture_name))
+        image_file_name = "{}.dds".format(os.path.join(self.work_directory, texture_name))
         # TexConv has a bug as it exports A8R8G8B8 data as a X8R8G8B8 DDS. Patch the DDS for diffuse textures.
         if attribute_type == "a":
             with binary_io.BinaryWriter(open(image_file_name, "r+b")) as writer:
@@ -265,16 +265,18 @@ class Importer:
         # Since the attributes provided to textures are often wrong, try to find the real attribute via texture name.
         # TODO: This correction often doesn't do much good and maps them badly too.
         attribute_type = attribute_name[1]
-        if "_Alb" in texture_name:
+        if "_Alb" or "_alb" or "Base" or "base" in texture_name:
             fixed_attribute_type = "a"
-        elif "_Emm" in texture_name:
+            print("a " + texture_name)
+        elif "_Emm" or "_emm"  in texture_name:
             fixed_attribute_type = "e"
-        elif "_Nrm" in texture_name:
+        elif "_Nrm" or "_nrm"  in texture_name:
             fixed_attribute_type = "n"
-        elif "_Spm" in texture_name:
+            print("n " + texture_name)
+        elif "_Spm" or "_spm"  or  "_Mtl" or "_mtl" in texture_name:
             fixed_attribute_type = "s"
         else:
-            fixed_attribute_type = attribute_type
+            fixed_attribute_type = attribute_type + "unk"
             addon.log(4, "Warning: Texture '{}': Unknown attribute '{}'".format(texture_name, attribute_name))
         # Log a correction.
         if attribute_type != fixed_attribute_type:
